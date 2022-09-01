@@ -5,13 +5,39 @@ import (
 	"fmt"
 	"geecache"
 	"log"
+	"net"
 	"net/http"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	pb "geecache/geecachepb"
 )
 
 var db = map[string]string{
 	"Tom":  "630",
 	"Jack": "589",
 	"Sam":  "567",
+}
+
+const (
+	rpcPort = ":11111"
+)
+
+func startRpcService() {
+	log.Println("start rpc service")
+	lis, err := net.Listen("tcp", rpcPort)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterGroupCacheServer(grpcServer, &geecache.GroupCacheService{})
+	reflection.Register(grpcServer)
+
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }
 
 func main() {
@@ -43,10 +69,13 @@ func main() {
 	if !ok {
 		addr = "http://localhost:9999"
 	}
-	peers := geecache.NewHTTPPool(addr)
-	peers.Set(addrs...)
+	geecache.Pool = geecache.NewHTTPPool(addr)
+	geecache.Pool.Set(addrs...)
 	log.Println("geecache is running at", addr)
 	mux := http.NewServeMux()
-	mux.Handle("/geecache", http.HandlerFunc(peers.ServeHTTP))
+	mux.Handle("/geecache", http.HandlerFunc(geecache.Pool.ServeHTTP))
+
+	go startRpcService()
+
 	log.Fatal(http.ListenAndServe(addr[7:], mux))
 }

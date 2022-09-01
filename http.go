@@ -30,6 +30,8 @@ type HTTPPool struct {
 	httpGetters map[string]*httpGetter // keyed by e.g. "http://10.0.0.2:8008"
 }
 
+var Pool *HTTPPool
+
 func NewHTTPPool(self string) *HTTPPool {
 	return &HTTPPool{
 		self:     self,
@@ -52,12 +54,8 @@ func (pool *HTTPPool) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	group, ok := GetGroup(groupname)
-	if !ok {
-		group = AddGroup(groupname, maxBytes, DefaultGetter, pool)
-	}
+	val, err := pool.Process(groupname, key)
 
-	val, err := group.Get(key)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound) // 404
 		fmt.Fprintf(w, "no such item: %q in group %q\n", key, groupname)
@@ -66,6 +64,15 @@ func (pool *HTTPPool) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.Write(val.ByteSlice())
 		// val.WriteTo(w)
 	}
+}
+
+func (pool *HTTPPool) Process(groupname, key string) (ByteView, error) {
+	group, ok := GetGroup(groupname)
+	if !ok {
+		group = AddGroup(groupname, maxBytes, DefaultGetter, pool)
+	}
+
+	return group.Get(key)
 }
 
 type httpGetter struct {
